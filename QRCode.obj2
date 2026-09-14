@@ -1,37 +1,41 @@
---information:QRコード v1.0.1
---track0:サイズ,1,100,10,1
---track1:余白,0,20,4,1
---track2:誤り訂正(0L 1M 2Q 3H),0,3,0,1
---track3:形状(0四角 1円 2角丸),0,2,0,1
---dialog:テキスト,text="https://example.com";
---dialog:前景色/col,fg_col=0x000000;
---dialog:背景色/col,bg_col=0xffffff;
---dialog:背景透明/chk,bg_trans=0;
---dialog:角丸強度,corner_r=30;
+--information:QRコード v1.0.2
+--track@size:サイズ,1,100,10,0.01
+--track@whitespace:余白,0,20,4,1
+--select@errorCorrection:誤り訂正,L=0,M=1,Q=2,H=3
+--select@shape:形状,四角=0,円=1,角丸=2
+--string@txt:テキスト,"https://example.com"
+--color@fg_col:前景色,0x000000
+--color@bg_col:背景色,0xffffff
+--check@bg_trans:背景透明,false
+--track@corner_r:角丸強度,0,100,30
 
-local cell_size = math.max(1, math.floor(tonumber(obj.track0) or 10))
-local margin = math.max(0, math.floor(tonumber(obj.track1) or 4))
-local ec_level = math.max(0, math.min(3, math.floor(tonumber(obj.track2) or 0)))
-local dot_shape = math.max(0, math.min(2, math.floor(tonumber(obj.track3) or 0)))
+local cell_size = math.max(1, math.floor(tonumber(size) or 10))
+local margin = math.max(0, math.floor(tonumber(whitespace) or 4))
+local ec_level = math.max(0, math.min(3, math.floor(tonumber(errorCorrection) or 0)))
+local dot_shape = math.max(0, math.min(2, math.floor(tonumber(shape) or 0)))
 
-local qr_text = text
+local qr_text = txt
 if type(qr_text) ~= "string" or qr_text == "" then
     qr_text = "https://example.com"
 end
 
 local fg_color = (type(fg_col) == "number") and fg_col or 0x000000
 local bg_color = (type(bg_col) == "number") and bg_col or 0xffffff
-local is_bg_trans = (bg_trans == 1)
+local is_bg_trans = (bg_trans == true)
 
 local corner_radius = 30
 if type(corner_r) == "number" then
     corner_radius = math.max(0, math.min(50, corner_r))
 end
 
--- AviUtl (LuaJIT) ビット演算関数
-local bit = bit or bit32
-local band, bor, bxor, lshift, rshift = bit.band, bit.bor, bit.bxor, bit.lshift, bit.rshift
+-- LuaJIT ビット演算
+local band   = bit.band
+local bor    = bit.bor
+local bxor   = bit.bxor
+local lshift = bit.lshift
+local rshift = bit.rshift
 
+-- GF(256) テーブル初期化
 local EXP_TABLE = {}
 local LOG_TABLE = {}
 
@@ -143,7 +147,6 @@ local function compute_penalty(grid, size)
         end
         if run >= 5 then penalty = penalty + 3 + (run - 5) end
     end
-
     for c = 1, size do
         local run = 1
         for r = 2, size do
@@ -155,7 +158,6 @@ local function compute_penalty(grid, size)
         end
         if run >= 5 then penalty = penalty + 3 + (run - 5) end
     end
-
     for r = 1, size - 1 do
         for c = 1, size - 1 do
             local val = grid[r][c]
@@ -164,7 +166,6 @@ local function compute_penalty(grid, size)
             end
         end
     end
-
     local dark_count = 0
     for r = 1, size do
         for c = 1, size do
@@ -174,7 +175,6 @@ local function compute_penalty(grid, size)
     local ratio = (dark_count / (size * size)) * 100
     local k1 = math.floor(math.abs(ratio - 50) / 5)
     penalty = penalty + k1 * 10
-
     return penalty
 end
 
@@ -195,17 +195,16 @@ local function generate_qr(text_str, ec_lvl)
             break
         end
     end
-
     if not version then version = 14 end
 
     local v_key = version * 10 + ec_lvl
     local v_info = VERSION_TABLE[v_key]
-    local total_data_bytes = v_info[1]
+    local total_data_bytes  = v_info[1]
     local ec_bytes_per_block = v_info[2]
-    local g1_blocks = v_info[3]
-    local g1_data_bytes = v_info[4]
-    local g2_blocks = v_info[5]
-    local g2_data_bytes = v_info[6]
+    local g1_blocks         = v_info[3]
+    local g1_data_bytes     = v_info[4]
+    local g2_blocks         = v_info[5]
+    local g2_data_bytes     = v_info[6]
 
     local bits = {}
     local function append_bits(val, num_bits)
@@ -219,13 +218,11 @@ local function generate_qr(text_str, ec_lvl)
     for i = 1, #data_bytes do
         append_bits(data_bytes[i], 8)
     end
-    
     local term_len = math.min(4, total_data_bytes * 8 - #bits)
     append_bits(0, term_len)
     while (#bits % 8) ~= 0 do
         table.insert(bits, 0)
     end
-    
     local pad_bytes = {0xEC, 0x11}
     local pad_idx = 1
     while #bits < total_data_bytes * 8 do
@@ -310,7 +307,6 @@ local function generate_qr(text_str, ec_lvl)
         if is_pat then is_pattern[r][c] = true end
     end
 
-    -- 1. Finder patterns
     local function draw_finder(top_r, top_c)
         for r = -1, 7 do
             for c = -1, 7 do
@@ -331,11 +327,12 @@ local function generate_qr(text_str, ec_lvl)
     draw_finder(1, size - 6)
     draw_finder(size - 6, 1)
 
-    -- 2. Alignment patterns
     local coords = ALIGNMENT_PATTERNS[version]
     for _, r_center in ipairs(coords) do
         for _, c_center in ipairs(coords) do
-            local overlap = (r_center <= 9 and c_center <= 9) or (r_center <= 9 and c_center >= size - 8) or (r_center >= size - 8 and c_center <= 9)
+            local overlap = (r_center <= 9 and c_center <= 9)
+                         or (r_center <= 9 and c_center >= size - 8)
+                         or (r_center >= size - 8 and c_center <= 9)
             if not overlap then
                 for r = -2, 2 do
                     for c = -2, 2 do
@@ -347,16 +344,13 @@ local function generate_qr(text_str, ec_lvl)
         end
     end
 
-    -- 3. Timing patterns
     for i = 9, size - 8 do
         if not reserved[7][i] then set_module(7, i, (i % 2 == 1) and 1 or 0, true) end
         if not reserved[i][7] then set_module(i, 7, (i % 2 == 1) and 1 or 0, true) end
     end
 
-    -- 4. Dark module
     set_module(4 * version + 10, 9, 1, true)
 
-    -- 5. Reserve format info modules
     for i = 1, 9 do
         if not reserved[9][i] then reserved[9][i] = true end
         if not reserved[i][9] then reserved[i][9] = true end
@@ -366,7 +360,6 @@ local function generate_qr(text_str, ec_lvl)
         if not reserved[i][9] then reserved[i][9] = true end
     end
 
-    -- 6. Reserve version info modules
     if version >= 7 then
         for r = 1, 6 do
             for c = size - 10, size - 8 do
@@ -376,7 +369,6 @@ local function generate_qr(text_str, ec_lvl)
         end
     end
 
-    -- Place Data Bits Zig-Zag
     local bit_idx = 1
     local col = size
     local upward = true
@@ -384,9 +376,8 @@ local function generate_qr(text_str, ec_lvl)
         if col == 7 then col = 6 end
         local cols = {col, col - 1}
         local r_start = upward and size or 1
-        local r_end = upward and 1 or size
-        local r_step = upward and -1 or 1
-
+        local r_end   = upward and 1 or size
+        local r_step  = upward and -1 or 1
         for r = r_start, r_end, r_step do
             for _, c in ipairs(cols) do
                 if c >= 1 and not reserved[r][c] then
@@ -403,9 +394,9 @@ local function generate_qr(text_str, ec_lvl)
     local ec_bits_map = {[0]=1, [1]=0, [2]=3, [3]=2}
     local ec_b = ec_bits_map[ec_lvl]
 
-    local best_mask = 0
+    local best_mask    = 0
     local best_penalty = 1e9
-    local best_grid = nil
+    local best_grid    = nil
 
     for m = 0, 7 do
         local masked_grid = {}
@@ -435,7 +426,6 @@ local function generate_qr(text_str, ec_lvl)
             table.insert(format_bits, band(rshift(format_code, i), 1))
         end
 
-        -- Corrected Format Info Placement
         local f_coords = {
             {9,1}, {9,2}, {9,3}, {9,4}, {9,5}, {9,6}, {9,8}, {9,9},
             {8,9}, {7,9}, {5,9}, {4,9}, {3,9}, {2,9}, {1,9}
@@ -465,7 +455,6 @@ local function generate_qr(text_str, ec_lvl)
             local v_code = bor(lshift(version, 12), v_val)
             local v_bits = {}
             for i = 0, 17 do table.insert(v_bits, band(rshift(v_code, i), 1)) end
-
             local idx = 1
             for r = 1, 6 do
                 for c = size - 10, size - 8 do
@@ -479,31 +468,34 @@ local function generate_qr(text_str, ec_lvl)
         local pen = compute_penalty(masked_grid, size)
         if pen < best_penalty then
             best_penalty = pen
-            best_mask = m
-            best_grid = masked_grid
+            best_mask    = m
+            best_grid    = masked_grid
         end
     end
 
     return best_grid, size, is_pattern
 end
 
-local grid, size, is_pattern = generate_qr(qr_text, ec_level)
+-- QRコード生成
+local grid, qr_size, is_pattern = generate_qr(qr_text, ec_level)
 
-local total_modules = size + margin * 2
+local total_modules = qr_size + margin * 2
 local canvas_w = total_modules * cell_size
 local canvas_h = total_modules * cell_size
 
+-- ① 仮想バッファを初期化（サイズ指定で透明クリアされる）
 obj.setoption("drawtarget", "tempbuffer", canvas_w, canvas_h)
 
+-- ② 背景を描画
 if not is_bg_trans then
     obj.load("figure", "四角形", bg_color, canvas_w)
     obj.draw(0, 0)
 end
 
--- 1. 規格パターンの描画（認識率向上のため常に四角形）
+-- ③ 規格パターン（ファインダー・アライメント等）は常に四角形で描画
 obj.load("figure", "四角形", fg_color, cell_size)
-for r = 1, size do
-    for c = 1, size do
+for r = 1, qr_size do
+    for c = 1, qr_size do
         if grid[r][c] == 1 and is_pattern[r][c] then
             local x = -canvas_w / 2 + (c - 1 + margin + 0.5) * cell_size
             local y = -canvas_h / 2 + (r - 1 + margin + 0.5) * cell_size
@@ -512,7 +504,7 @@ for r = 1, size do
     end
 end
 
--- 2. データ領域のモジュール描画（設定された形状を適用）
+-- ④ データ領域のモジュールを選択形状で描画
 if dot_shape == 1 then
     obj.load("figure", "円", fg_color, cell_size)
 elseif dot_shape == 2 then
@@ -522,8 +514,8 @@ else
     obj.load("figure", "四角形", fg_color, cell_size)
 end
 
-for r = 1, size do
-    for c = 1, size do
+for r = 1, qr_size do
+    for c = 1, qr_size do
         if grid[r][c] == 1 and not is_pattern[r][c] then
             local x = -canvas_w / 2 + (c - 1 + margin + 0.5) * cell_size
             local y = -canvas_h / 2 + (r - 1 + margin + 0.5) * cell_size
@@ -532,4 +524,7 @@ for r = 1, size do
     end
 end
 
+-- ⑤ 描画先をフレームバッファに戻してから仮想バッファを読み込んで表示
+obj.setoption("drawtarget", "framebuffer")
 obj.load("tempbuffer")
+obj.draw(0, 0)
